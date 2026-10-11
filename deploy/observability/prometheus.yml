@@ -1,0 +1,10 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  # Scrapes Express directly over the private compose network (nginx deliberately does not proxy /metrics).
+  # If METRICS_TOKEN is set for the backend, add:  authorization: { type: Bearer, credentials: <token> }
+  - job_name: movie-booking-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["backend:3000"]

@@ -1,0 +1,83 @@
+# Rendered with envsubst: ${PORT} (listen port) and ${UPSTREAM} (host:port of Express).
+# Lives in http{} context via conf.d / http.d, so zones may be declared here.
+
+limit_req_zone $binary_remote_addr zone=api_general:10m rate=30r/s;
+limit_req_zone $binary_remote_addr zone=api_auth:10m rate=5r/s;
+limit_req_status 429;
+
+# The platform load balancer (Render) / Docker bridge are the only peers; trust their XFF chain,
+# then overwrite X-Forwarded-For for Express with the resolved client address.
+set_real_ip_from 10.0.0.0/8;
+set_real_ip_from 172.16.0.0/12;
+set_real_ip_from 192.168.0.0/16;
+set_real_ip_from 127.0.0.1;
+real_ip_header X-Forwarded-For;
+real_ip_recursive on;
+
+map $http_x_forwarded_proto $forwarded_proto {
+  default $http_x_forwarded_proto;
+  ''      $scheme;
+}
+
+server {
+  listen ${PORT};
+  server_tokens off;
+
+  client_max_body_size 200k;
+  client_body_timeout 15s;
+  client_header_timeout 15s;
+  keepalive_timeout 65s;
+  send_timeout 30s;
+
+  add_header X-Content-Type-Options "nosniff" always;
+  add_header X-Frame-Options "DENY" always;
+  add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+  add_header Strict-Transport-Security "max-age=15552000; includeSubDomains" always;
+
+  proxy_http_version 1.1;
+  proxy_set_header Host $host;
+  proxy_set_header X-Real-IP $remote_addr;
+  proxy_set_header X-Forwarded-For $remote_addr;
+  proxy_set_header X-Forwarded-Proto $forwarded_proto;
+  proxy_set_header X-Request-Id $request_id;
+  proxy_set_header Connection "";
+  proxy_set_header Authorization $http_authorization;
+  proxy_set_header Idempotency-Key $http_idempotency_key;
+  proxy_connect_timeout 5s;
+  proxy_read_timeout 35s;
+  proxy_send_timeout 35s;
+
+  # Operational metrics are never exposed publicly; Prometheus scrapes Express directly on the private network.
+  location = /metrics {
+    return 404;
+  }
+
+  location = /nginx-health {
+    access_log off;
+    default_type text/plain;
+    return 200 "ok";
+  }
+
+  location /health/ {
+    access_log off;
+    proxy_pass http://${UPSTREAM};
+  }
+
+  # Credential endpoints get a much stricter burst allowance.
+  location /api/auth/ {
+    limit_req zone=api_auth burst=10 nodelay;
+    proxy_pass http://${UPSTREAM};
+  }
+
+  # Image uploads (admin only, 5 MB cap enforced again in Express).
+  location = /api/admin/media/upload {
+    client_max_body_size 6m;
+    limit_req zone=api_general burst=10 nodelay;
+    proxy_pass http://${UPSTREAM};
+  }
+
+  location / {
+    limit_req zone=api_general burst=60 nodelay;
+    proxy_pass http://${UPSTREAM};
+  }
+}

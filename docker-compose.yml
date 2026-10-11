@@ -1,0 +1,112 @@
+# Local stack:  docker compose up --build
+# Optional observability:  docker compose --profile observability up --build
+name: movie-booking
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: mbp
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d mbp"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [internal]
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]   # cache only: nothing here is authoritative
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [internal]
+
+  migrate:
+    build: { context: ., dockerfile: backend/Dockerfile, target: api }
+    command: ["sh", "-c", "node dist/scripts/migrate.js && node dist/scripts/seed.js"]
+    environment: &api-env
+      NODE_ENV: development
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/mbp
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:-local-dev-only-secret-change-me-0123456789}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      # Local-only seeded accounts (admin@demo.local, manager@demo.local, customer@demo.local). Never set in production.
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-}
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [internal]
+
+  backend:
+    build: { context: ., dockerfile: backend/Dockerfile, target: api }
+    environment:
+      <<: *api-env
+      PORT: "3000"
+      TRUST_PROXY: "1"
+      RELAX_RATE_LIMITS: ${RELAX_RATE_LIMITS:-false}
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    networks: [internal]
+
+  nginx:
+    image: nginx:1.27-alpine
+    environment:
+      PORT: "8080"
+      UPSTREAM: backend:3000
+    volumes:
+      - ./deploy/nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+    ports:
+      - "8080:8080"
+    depends_on:
+      backend: { condition: service_started }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/nginx-health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [internal]
+
+  prometheus:
+    profiles: [observability]
+    image: prom/prometheus:v2.55.1
+    volumes:
+      - ./deploy/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports: ["9090:9090"]
+    networks: [internal]
+
+  grafana:
+    profiles: [observability]
+    image: grafana/grafana:11.3.0
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - ./deploy/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["3001:3000"]
+    depends_on: [prometheus]
+    networks: [internal]
+
+  jaeger:
+    profiles: [observability]
+    image: jaegertracing/all-in-one:1.62.0
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports: ["16686:16686"]
+    networks: [internal]
+
+volumes:
+  pgdata:
+
+networks:
+  internal:
