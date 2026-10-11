@@ -63,6 +63,8 @@ services:
     environment:
       PORT: "8080"
       UPSTREAM: backend:3000
+      REAL_IP_FROM: 127.0.0.1
+      REAL_IP_HEADER: X-Forwarded-For
     volumes:
       - ./deploy/nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
     ports:

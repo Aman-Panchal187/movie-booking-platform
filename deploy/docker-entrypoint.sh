@@ -6,8 +6,10 @@ set -eu
 
 export PORT="${PORT:-10000}"
 export UPSTREAM="127.0.0.1:3000"
+export REAL_IP_FROM="${REAL_IP_FROM:-127.0.0.1}"
+export REAL_IP_HEADER="${REAL_IP_HEADER:-X-Forwarded-For}"
 
-envsubst '${PORT} ${UPSTREAM}' < /etc/nginx/templates/default.conf.template > /etc/nginx/http.d/default.conf
+envsubst '${PORT} ${UPSTREAM} ${REAL_IP_FROM} ${REAL_IP_HEADER}' < /etc/nginx/templates/default.conf.template > /etc/nginx/http.d/default.conf
 rm -f /etc/nginx/http.d/default.conf.apk-new
 nginx -t
 
