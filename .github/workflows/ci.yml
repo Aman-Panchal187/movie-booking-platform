@@ -91,8 +91,6 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [backend, frontend, e2e, docker]
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - name: Trigger Render deploy
         env:
@@ -105,8 +103,3 @@ jobs:
           code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$RENDER_DEPLOY_HOOK")
           echo "Render deploy hook responded with HTTP $code"
           [ "$code" -ge 200 ] && [ "$code" -lt 300 ]
-      # Vercel only builds the `deploy` branch (see its Ignored Build Step), so moving this branch to the tested
-      # commit is what releases the frontend. Pushes to main alone never reach production.
-      - uses: actions/checkout@v4
-      - name: Release frontend (fast-forward the deploy branch to this tested commit)
-        run: git push origin "${GITHUB_SHA}:refs/heads/deploy" --force
