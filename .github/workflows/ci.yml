@@ -103,3 +103,14 @@ jobs:
           code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$RENDER_DEPLOY_HOOK")
           echo "Render deploy hook responded with HTTP $code"
           [ "$code" -ge 200 ] && [ "$code" -lt 300 ]
+      - name: Trigger Vercel deploy
+        env:
+          VERCEL_DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$VERCEL_DEPLOY_HOOK" ]; then
+            echo "VERCEL_DEPLOY_HOOK secret is not set; skipping deploy."
+            exit 0
+          fi
+          code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$VERCEL_DEPLOY_HOOK")
+          echo "Vercel deploy hook responded with HTTP $code"
+          [ "$code" -ge 200 ] && [ "$code" -lt 300 ]
