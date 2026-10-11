@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import cors from 'cors';
 import express, { Express, RequestHandler } from 'express';
 import helmet from 'helmet';
@@ -66,11 +67,17 @@ export interface AppHandle {
 
 const MINUTE = 60_000;
 
+function sameSecret(given: string, expected: string): boolean {
+  const a = Buffer.from(given);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
 function metricsGuard(e: Env): RequestHandler {
   return (req, _res, next) => {
     // In production /metrics is only reachable with a bearer token (and Nginx does not proxy it publicly).
     if (e.NODE_ENV === 'production' && !e.METRICS_TOKEN) return next(new AppError(404, 'NOT_FOUND', 'Route not found'));
-    if (e.METRICS_TOKEN && req.header('authorization') !== `Bearer ${e.METRICS_TOKEN}`) {
+    if (e.METRICS_TOKEN && !sameSecret(req.header('authorization') ?? '', `Bearer ${e.METRICS_TOKEN}`)) {
       return next(new AppError(401, 'UNAUTHORIZED', 'Metrics token required'));
     }
     next();

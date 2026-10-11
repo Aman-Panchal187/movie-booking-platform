@@ -50,9 +50,11 @@ server {
   proxy_read_timeout 35s;
   proxy_send_timeout 35s;
 
-  # Operational metrics are never exposed publicly; Prometheus scrapes Express directly on the private network.
+  # Prometheus metrics. Express answers 404 in production unless METRICS_TOKEN is set and 401 without the
+  # matching bearer token, so a scraper such as Grafana Cloud needs the token; anonymous visitors get nothing.
   location = /metrics {
-    return 404;
+    limit_req zone=api_auth burst=5 nodelay;
+    proxy_pass http://${UPSTREAM};
   }
 
   location = /nginx-health {

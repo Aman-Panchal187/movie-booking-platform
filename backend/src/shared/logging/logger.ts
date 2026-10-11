@@ -1,3 +1,4 @@
+import { trace } from '@opentelemetry/api';
 import pino, { Logger } from 'pino';
 import { env } from '../config/env';
 
@@ -22,6 +23,11 @@ export const logger: Logger = pino({
   base: { service: 'movie-booking-api' },
   timestamp: pino.stdTimeFunctions.isoTime,
   redact: { paths: REDACT_PATHS, censor: '[REDACTED]' },
+  // Correlate every log line with the active trace (empty when tracing is disabled).
+  mixin() {
+    const ctx = trace.getActiveSpan()?.spanContext();
+    return ctx ? { traceId: ctx.traceId, spanId: ctx.spanId } : {};
+  },
 });
 
 export function moduleLogger(module: string): Logger {
