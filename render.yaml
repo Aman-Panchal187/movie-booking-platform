@@ -6,7 +6,6 @@ services:
     plan: free
     dockerfilePath: ./backend/Dockerfile
     dockerContext: .
-    dockerTarget: edge
     healthCheckPath: /nginx-health
     autoDeploy: true
     envVars:
