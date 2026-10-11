@@ -85,3 +85,21 @@ jobs:
       - name: Build Nginx + Express production image
         uses: docker/build-push-action@v6
         with: { context: ., file: backend/Dockerfile, target: edge, push: false, cache-from: type=gha, cache-to: "type=gha,mode=max" }
+
+  deploy:
+    # Continuous delivery: runs only for pushes to main, and only after every CI job above passed.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [backend, frontend, e2e, docker]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deploy
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$RENDER_DEPLOY_HOOK" ]; then
+            echo "RENDER_DEPLOY_HOOK secret is not set; skipping deploy."
+            exit 0
+          fi
+          code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$RENDER_DEPLOY_HOOK")
+          echo "Render deploy hook responded with HTTP $code"
+          [ "$code" -ge 200 ] && [ "$code" -lt 300 ]
