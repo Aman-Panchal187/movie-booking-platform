@@ -15,6 +15,15 @@ if [ "${RUN_MIGRATIONS:-true}" = "true" ]; then
   node dist/scripts/migrate.js
 fi
 
+# Optional one-time bootstrap from environment (both are idempotent and safe on every restart).
+if [ -n "${ADMIN_EMAIL:-}" ] && [ -n "${ADMIN_PASSWORD:-}" ]; then
+  node dist/scripts/createAdmin.js || echo "admin bootstrap failed" >&2
+fi
+if [ "${RUN_SEED:-false}" = "true" ]; then
+  # Runs in the background so the API is reachable immediately; historical demo data can take minutes on a remote DB.
+  (node dist/scripts/seed.js || echo "seed failed" >&2) &
+fi
+
 HOST=127.0.0.1 PORT=3000 node dist/server.js &
 NODE_PID=$!
 nginx -g 'daemon off;' &

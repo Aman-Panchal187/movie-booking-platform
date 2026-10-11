@@ -12,6 +12,10 @@ services:
     envVars:
       - { key: NODE_ENV, value: production }
       - { key: RUN_MIGRATIONS, value: "true" }
+      - { key: RUN_SEED, value: "true" }
+      - { key: ADMIN_EMAIL, sync: false }
+      - { key: ADMIN_NAME, value: Platform Admin }
+      - { key: ADMIN_PASSWORD, sync: false }
       - { key: TRUST_PROXY, value: "1" }
       - { key: DB_POOL_MAX, value: "5" }
       - { key: LOG_LEVEL, value: info }
