@@ -86,8 +86,17 @@ export async function request<T>(path: string, o: Options = {}): Promise<{ data:
         if (attempt >= retries) throw new ApiError(0, 'NETWORK', 'Cannot reach the server. Check your connection and try again.', err);
       }
       if (res && !(RETRYABLE.has(res.status) && attempt < retries)) {
-        const json = (await res.json().catch(() => ({}))) as { data?: T; meta?: PageMeta; error?: { code: string; message: string; details?: unknown } };
-        if (!res.ok) throw new ApiError(res.status, json.error?.code ?? 'ERROR', json.error?.message ?? res.statusText, json.error?.details);
+        const json = (await res.json().catch(() => ({}))) as {
+          data?: T & { code?: string; message?: string };
+          meta?: PageMeta;
+          error?: { code: string; message: string; details?: unknown };
+        };
+        if (!res.ok) {
+          // A declined mock payment is a persisted business result: { data: { code, message } } with HTTP 402.
+          const code = json.error?.code ?? json.data?.code ?? 'ERROR';
+          const message = json.error?.message ?? json.data?.message ?? (res.statusText || `Request failed (${res.status})`);
+          throw new ApiError(res.status, code, message, json.error?.details);
+        }
         return { data: json.data as T, meta: json.meta, headers: res.headers };
       }
       await sleep(1500 * 2 ** attempt);
